@@ -54,7 +54,8 @@ npm install -g uglify-js
 
 # Setup environment
 cp sample.env .env
-# Edit .env dengan kredensial Anda
+# Edit .env dengan kredensial Anda, jika tidak mau ribet tinggal jalankan bash setup.sh
+
 
 # Jalankan bot
 python3 -m PyroUbot
