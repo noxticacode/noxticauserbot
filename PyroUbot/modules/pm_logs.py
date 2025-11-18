@@ -206,6 +206,12 @@ async def _(client, message):
     vars = await get_pm_id(client.me.id)
     if user.id not in vars:
         await add_pm_id(client.me.id, user.id)
+        if user.id in MSG_ID:
+            try:
+                await delete_old_message(message, MSG_ID[user.id])
+                del MSG_ID[user.id]
+            except:
+                pass
         return await message.reply(f"{brhsl}baiklah, {rpk} telah diterima")
     else:
         return await message.reply(f"{brhsl}{rpk} sudah diterima")
