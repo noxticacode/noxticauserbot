@@ -572,15 +572,7 @@ Kami sangat menghargai kontribusi dari komunitas untuk pengembangan PyroUbot.
 - Gunakan environment variables untuk secrets
 - Follow principle of least privilege
 
-### Contributors
 
-Terima kasih kepada semua yang telah berkontribusi!
-
-<a href="https://github.com/noxticacode/noxticaubot/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=noxticacode/noxticaubot" />
-</a>
-
----
 
 ## API Reference
 
