@@ -6,20 +6,23 @@ from pytz import timezone
 
 
 from PyroUbot import *
+# [TAMBAHAN] Import untuk penghapusan data total
+from PyroUbot.core.database.userbot import remove_ubot
+from PyroUbot.core.database.variabel import remove_all_vars
 
 __MODULE__ = "ᴅʙ ᴄᴏɴᴛʀᴏʟ"
 __HELP__ = """
-<blockquote><b>Bantuan Untuk DB Control</blockquote></b>
+<blockquote><b>Bantuan Untuk DB Control</b></blockquote>
 
 <blockquote><b>perintah : <code>{0}time</code>
-    Untuk Menambah - Mengurangi Masa Aktif User</blockquote></b>
+    Untuk Menambah - Mengurangi Masa Aktif User</b></blockquote>
 
 <blockquote><b>perintah : <code>{0}cek</code>
-    Untuk Melihat Masa Aktif User</blockquote></b>
+    Untuk Melihat Masa Aktif User</b></blockquote>
 
-<blockquote><b>perintah : <code>{0}addadmin</code> - <code>{0}unadmin</code> - <code>{0}getadmin</code></blockquote></b>
+<blockquote><b>perintah : <code>{0}addadmin</code> - <code>{0}unadmin</code> - <code>{0}getadmin</code></b></blockquote>
 
-<blockquote><b>perintah : <code>{0}seles</code> - <code>{0}unseles</code> - <code>{0}getseles</code></blockquote></b>
+<blockquote><b>perintah : <code>{0}seles</code> - <code>{0}unseles</code> - <code>{0}getseles</code></b></blockquote>
 """
 
 @PY.BOT("prem")
@@ -84,40 +87,74 @@ async def _(client, message):
 @PY.BOT("unprem")
 @PY.SELLER
 async def _(client, message):
-    msg = await message.reply("sedang memproses...")
+    msg = await message.reply("<b>Sedang memproses pencabutan akses...</b>")
     user_id = await extract_user(message)
     if not user_id:
-        return await msg.edit(
-            f"<b>{message.text} user_id/username</b>"
-        )
+        return await msg.edit(f"<b>{message.text} user_id/username</b>")
 
     try:
         user = await client.get_users(user_id)
     except Exception as error:
-        return await msg.edit(error)
+        return await msg.edit(f"User tidak ditemukan: {error}")
 
     prem_users = await get_list_from_vars(client.me.id, "PREM_USERS")
 
     if user.id not in prem_users:
         return await msg.edit(f"""
- ɪɴғᴏʀᴍᴀᴛɪᴏɴ :
- <blockquote><b>name: [{user.first_name} {user.last_name or ''}](tg://user?id={user.id})</b>
- <b>id: {user.id}</b>
- <b>keterangan: tidak dalam daftar</b></blockquote>
- """
-        )
+<b>INFORMASI:</b>
+<blockquote><b>Name:</b> {user.mention}
+<b>ID:</b> <code>{user.id}</code>
+<b>Status:</b> Tidak terdaftar di Premium</blockquote>
+""")
+
     try:
+        # 1. Hapus dari list Premium
         await remove_from_vars(client.me.id, "PREM_USERS", user.id)
-        await rem_expired_date(user_id)
+        
+        # 2. Hapus Tanggal Expired
+        await rem_expired_date(user.id)
+        
+        # 3. Hapus Data Userbot dari Database
+        await remove_ubot(user.id)
+        
+        # 4. Hapus Semua Variabel User
+        try:
+            await remove_all_vars(user.id)
+        except:
+            pass
+
+        # 5. Logout Paksa & Bersihkan Memori (Jika Bot Sedang Aktif)
+        status_bot = "Offline (Data Dihapus)"
+        if user.id in ubot._get_my_id:
+            for X in ubot._ubot:
+                if user.id == X.me.id:
+                    try:
+                        await X.log_out()
+                        ubot._ubot.remove(X)
+                        ubot._get_my_id.remove(user.id)
+                        status_bot = "Aktif -> Dilogout & Dihapus"
+                    except Exception as e:
+                        status_bot = f"Gagal Logout ({e})"
+                    break
+        
+        # 6. Kirim Notifikasi ke User
+        try:
+            await bot.send_message(
+                user.id,
+                "<b>⛔️ AKSES DICABUT</b>\n\nStatus Premium Anda telah dicabut. Sesi telah dihapus.\nSilahkan order kembali untuk menggunakan bot."
+            )
+        except:
+            pass
+
         return await msg.edit(f"""
- ɪɴғᴏʀᴍᴀᴛɪᴏɴ :
- <blockquote><b>name: [{user.first_name} {user.last_name or ''}](tg://user?id={user.id})</b>
- <b>id: {user.id}</b>
- <b>keterangan: unpremium</b></blockquote>
-"""
-        )
+<b>✅ BERHASIL UNPREM</b>
+<blockquote><b>Name:</b> {user.mention}
+<b>ID:</b> <code>{user.id}</code>
+<b>Status Bot:</b> {status_bot}
+<b>Keterangan:</b> Akses dicabut & Data database dibersihkan.</blockquote>
+""")
     except Exception as error:
-        return await msg.edit(error)
+        return await msg.edit(f"Error: {error}")
         
 
 @PY.BOT("getprem")
