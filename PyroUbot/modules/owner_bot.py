@@ -6,8 +6,9 @@ from pytz import timezone
 from PyroUbot.config import OWNER_ID
 from PyroUbot import *
 
-# [PERBAIKAN]: Impor fungsi remove_ubot
+# [TAMBAHAN] Import yang diperlukan
 from PyroUbot.core.database.userbot import remove_ubot
+from PyroUbot.core.database.variabel import remove_all_vars
 
 
 @PY.UBOT("prem")
@@ -72,69 +73,79 @@ async def _(client, message):
         return await msg.edit(error)
 
 
-# --- [FUNGSI UNPREM YANG DIPERBAIKI] ---
 @PY.UBOT("unprem")
 async def _(client, message):
-    msg = await message.reply("ꜱᴇᴅᴀɴɢ ᴍᴇᴍᴘʀᴏꜱᴇꜱ...")
+    msg = await message.reply("<b>Sedang memproses pencabutan akses...</b>")
     user_id = await extract_user(message)
     if not user_id:
-        return await msg.edit(
-            f"<b>{message.text} ᴜsᴇʀ_ɪᴅ/ᴜsᴇʀɴᴀᴍᴇ</b>"
-        )
+        return await msg.edit(f"<b>{message.text} user_id/username</b>")
 
     try:
         user = await client.get_users(user_id)
     except Exception as error:
-        return await msg.edit(error)
+        return await msg.edit(f"User tidak ditemukan: {error}")
 
     prem_users = await get_list_from_vars(bot.me.id, "PREM_USERS")
-    is_bot_running = user.id in ubot._get_my_id
-
-    if user.id not in prem_users and not is_bot_running:
+    
+    # Cek apakah user ada di list premium ATAU sedang aktif di memory bot
+    is_active = user.id in ubot._get_my_id
+    if user.id not in prem_users and not is_active:
         return await msg.edit(f"""
-<blockquote><b>ɴᴀᴍᴇ: [{user.first_name} {user.last_name or ''}](tg://user?id={user.id})</b>
-<b>ɪᴅ: `{user.id}`</b>
-<b>ᴋᴇᴛᴇʀᴀɴɢᴀɴ: ᴛɪᴅᴀᴋ ᴛᴇʀᴅᴀꜰᴛᴀʀ</ci></b></blockquote>
-"""
-        )
-        
+<b>INFORMASI:</b>
+<blockquote><b>Name:</b> {user.mention}
+<b>ID:</b> <code>{user.id}</code>
+<b>Status:</b> Tidak terdaftar & Tidak aktif</blockquote>
+""")
+
     try:
-        # 1. Hapus dari PREM_USERS
+        # 1. Hapus dari list Premium
         if user.id in prem_users:
             await remove_from_vars(bot.me.id, "PREM_USERS", user.id)
         
-        # 2. Hapus expired date
-        await rem_expired_date(user_id)
+        # 2. Hapus Tanggal Expired
+        await rem_expired_date(user.id)
         
-        # 3. [PERBAIKAN] Hapus sesi bot dari database dan list
-        keterangan_bot = ""
+        # 3. Hapus Data Userbot dari Database
+        await remove_ubot(user.id)
+        
+        # 4. Hapus Semua Variabel User
+        try:
+            await remove_all_vars(user.id)
+        except:
+            pass
+
+        # 5. Logout Paksa & Bersihkan Memori
+        bot_status_log = "Data Database Dihapus"
         if user.id in ubot._get_my_id:
             for X in ubot._ubot:
                 if user.id == X.me.id:
-                    # Hapus dari database userbot
-                    await remove_ubot(X.me.id) 
-                    # Hapus dari list sesi aktif
-                    ubot._get_my_id.remove(X.me.id)
-                    ubot._ubot.remove(X)
-                    # Logout (opsional, tapi disarankan)
-                    await X.log_out() 
-                    keterangan_bot = "\nSesi userbot telah dihapus."
-                    
                     try:
-                        await bot.send_message(user.id, "Masa premium Anda telah dicabut. Sesi Userbot Anda telah dihapus.")
-                    except Exception:
+                        await X.log_out()
+                        ubot._ubot.remove(X)
+                        ubot._get_my_id.remove(user.id)
+                        bot_status_log = "Sesi Dilogout & Dihapus"
+                    except:
                         pass
                     break
         
+        # 6. Kirim Notifikasi
+        try:
+            await bot.send_message(
+                user.id,
+                "<b>⛔️ AKSES DICABUT</b>\n\nStatus Premium Anda telah dicabut oleh Owner. Silahkan order kembali."
+            )
+        except:
+            pass
+
         return await msg.edit(f"""
-<blockquote><b>ɴᴀᴍᴇ: [{user.first_name} {user.last_name or ''}](tg://user?id={user.id})</b>
-<b>ɪᴅ: `{user.id}`</b>
-<b>ᴋᴇᴛᴇʀᴀɴɢᴀɴ: ᴛᴇʟᴀʜ ᴅɪ ʜᴀᴘᴜꜱ ᴅᴀʀɪ ᴅᴀᴛᴀʙᴀꜱᴇ.{keterangan_bot}</ci></b></blockquote>
-"""
-        )
+<b>✅ BERHASIL UNPREM</b>
+<blockquote><b>Name:</b> {user.mention}
+<b>ID:</b> <code>{user.id}</code>
+<b>Tindakan:</b> {bot_status_log}
+<b>Keterangan:</b> User diharuskan membeli ulang untuk login kembali.</blockquote>
+""")
     except Exception as error:
-        return await msg.edit(error)
-# --- [AKHIR FUNGSI UNPREM] ---
+        return await msg.edit(f"Gagal: {error}")
         
 
 @PY.UBOT("getprem")
