@@ -1,4 +1,3 @@
-#
 import asyncio
 import time
 import logging
@@ -20,7 +19,7 @@ _last_error_time = {}
 async def expiredUserbots():
     """
     Checks for expired userbots and handles them gracefully.
-    Improved with better error handling, rate limiting, and batching.
+    Improved: Handles users with NO expiry date by removing them.
     """
     # Timeout between full scan cycles (5 minutes)
     SCAN_INTERVAL = 300
@@ -52,7 +51,7 @@ async def expiredUserbots():
                         
                     user_id = X.me.id
                     
-                    # Skip if already being processed (prevents double processing on error)
+                    # Skip if already being processed
                     if user_id in _processing_users:
                         continue
                     
@@ -67,11 +66,16 @@ async def expiredUserbots():
                         # Use a timeout to prevent hanging on a single user
                         async def process_user():
                             try:
+                                # Jangan cek expired untuk Owner agar tidak terhapus sendiri
+                                if user_id == OWNER_ID:
+                                    return
+
                                 exp_date = await get_expired_date(user_id)
                                 
-                                # Skip if no expiry set
+                                # === LOGIKA BARU: JIKA TIDAK ADA TANGGAL, ANGGAP EXPIRED ===
                                 if not exp_date:
-                                    print(f"[INFO] - {user_id} - No expiry date found")
+                                    print(f"[INFO] - {user_id} - No expiry date found (Illegal User) - REMOVING")
+                                    await process_expired_user(X, user_id)
                                     return
                                 
                                 exp_str = exp_date.strftime("%d-%m-%Y")
@@ -79,9 +83,8 @@ async def expiredUserbots():
                                 # Check if expired today
                                 if current_date == exp_str:
                                     print(f"[INFO] - {user_id} - EXPIRY DETECTED ({exp_str})")
-                                    
-                                    # Process expiry in sequence with individual error handling
                                     await process_expired_user(X, user_id)
+                                    
                             except Exception as e:
                                 _last_error_time[user_id] = now
                                 print(f"[ERROR] - {user_id} - Failed to check expiry: {str(e)}")
@@ -98,7 +101,7 @@ async def expiredUserbots():
                         if user_id in _processing_users:
                             _processing_users.remove(user_id)
                 
-                # Add small delay between batches to reduce server load
+                # Add small delay between batches
                 if i + batch_size < len(active_ubots):
                     await asyncio.sleep(2)
             
@@ -108,12 +111,8 @@ async def expiredUserbots():
             
         except Exception as e:
             print(f"[CRITICAL] Error in expiredUserbots main loop: {str(e)}")
-            
-            # Print traceback but don't exit the loop
             import traceback
             traceback.print_exc()
-            
-            # Wait before retrying to avoid rapid error loops
             await asyncio.sleep(60)
 
 async def process_expired_user(client, user_id):
@@ -126,7 +125,7 @@ async def process_expired_user(client, user_id):
             await client.unblock_user(bot.me.username)
             steps_completed.append("unblock")
         except Exception as e:
-            print(f"[ERROR] - {user_id} - Failed to unblock bot: {str(e)}")
+            pass
         
         # Step 2: Remove user from database
         try:
@@ -148,8 +147,15 @@ async def process_expired_user(client, user_id):
             steps_completed.append("remove_expiry")
         except Exception as e:
             print(f"[ERROR] - {user_id} - Failed to remove expiry data: {str(e)}")
+
+        # Step 4.5: Remove Premium Status (Tambahan)
+        try:
+            await remove_vars(bot.me.id, "PREM_USERS", user_id) # Menghapus dari list prem jika ada
+            steps_completed.append("remove_prem_status")
+        except Exception:
+            pass
         
-        # Step 5: Remove from memory lists (non-critical)
+        # Step 5: Remove from memory lists
         try:
             if user_id in ubot._get_my_id:
                 ubot._get_my_id.remove(user_id)
@@ -164,27 +170,30 @@ async def process_expired_user(client, user_id):
         except Exception:
             pass
         
-        # Step 6: Log out client
+        # Step 6: Send notification message (Suruh beli lagi)
+        try:
+            await bot.send_message(
+                user_id,
+                f"""
+<b>Masa aktif Userbot Anda telah berakhir atau tidak valid!</b>
+
+Silahkan melakukan pembelian ulang untuk melanjutkan penggunaan bot ini.
+                """,
+                reply_markup=InlineKeyboardMarkup(BTN.EXP_UBOT()),
+            )
+            steps_completed.append("notify")
+        except Exception as e:
+            print(f"[ERROR] - {user_id} - Failed to send notification: {str(e)}")
+
+        # Step 7: Log out client (Final Step)
         try:
             await client.log_out()
             steps_completed.append("logout")
         except Exception as e:
             print(f"[ERROR] - {user_id} - Failed to log out: {str(e)}")
         
-        # Step 7: Send notification (non-critical)
-        try:
-            await bot.send_message(
-                user_id,
-                MSG.EXP_MSG_UBOT(client),
-                reply_markup=InlineKeyboardMarkup(BTN.EXP_UBOT()),
-            )
-            steps_completed.append("notify")
-        except Exception as e:
-            print(f"[ERROR] - {user_id} - Failed to send notification: {str(e)}")
-        
         # Final confirmation
         print(f"[INFO] - {user_id} - EXPIRED END - Steps completed: {', '.join(steps_completed)}")
         
     except Exception as e:
         print(f"[CRITICAL] - {user_id} - Failed to process expiry: {str(e)}")
-        # Don't re-raise to prevent loop disruption
